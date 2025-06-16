@@ -1,6 +1,8 @@
 "use client";
 import React, { useState } from "react";
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:7860";
+
 export default function RemoveBgPage() {
   const [image, setImage] = useState<File | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -15,7 +17,7 @@ export default function RemoveBgPage() {
     const formData = new FormData();
     formData.append("file", image);
 
-    const res = await fetch("https://YOUR_BACKEND_URL/remove-bg", {
+    const res = await fetch(`${BACKEND_URL}/remove-bg`, {
       method: "POST",
       body: formData,
     });
@@ -50,7 +52,6 @@ export default function RemoveBgPage() {
         </button>
       </form>
 
-      {/* Tampilkan preview HANYA jika belum ada result */}
       {image && !result && (
         <div className="mt-6">
           <div className="font-bold mb-2">Preview:</div>
@@ -62,7 +63,6 @@ export default function RemoveBgPage() {
         </div>
       )}
 
-      {/* Tampilkan hasil output */}
       {result && (
         <div className="mt-6">
           <div className="font-bold mb-2">Result:</div>
