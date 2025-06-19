@@ -1,15 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Cascadia+Code:ital,wght@0,200..700;1,200..700&family=Titillium+Web:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700&family=Edu+VIC+WA+NT+Hand+Pre:wght@400..700&display=swap');
 @import "tailwindcss";
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,4 +17,21 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Font helper classes */
+.font-titillium {
+  font-family: 'Titillium Web', sans-serif !important;
+}
+.font-cascadia {
+  font-family: 'Cascadia Code', monospace !important;
+}
+.font-edu {
+  font-family: 'Edu VIC WA NT Hand Pre', cursive !important;
+}
+@font-face {
+  font-family: "Horizon";
+  src: url("/fonts/Horizon.otf") format("opentype");
+  font-weight: bold;
+  font-style: normal;
 }

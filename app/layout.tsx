@@ -1,19 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "NoneBG - Free and no ADS Tool",
-  description: "Free no ADS Background Remove Tool",
+  title: "NoneBG - Free and no ADS Background Tool",
+  description: "Free and no ADS Background Tool",
   icons: {
     icon: "/fav.png",
     shortcut: "/fav.png",
@@ -44,16 +34,19 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://nonebg.vercel.app"),
 };
 
-// ---------------------
-// INI FUNGSI YANG HARUS ADA DI layout.tsx (wajib return children)
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <head>
+        {/* Font Titillium Web, Cascadia Code, Edu VIC WA NT Hand Pre */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Cascadia+Code:ital,wght@0,200..700;1,200..700&family=Titillium+Web:ital,wght@0,200;0,300;0,400;0,600;0,700;0,900;1,200;1,300;1,400;1,600;1,700&family=Edu+VIC+WA+NT+Hand+Pre:wght@400..700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
         {children}
       </body>
     </html>
