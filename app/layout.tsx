@@ -12,8 +12,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NoneBG",
-  description: "Free no ADS Background Tool",
+  title: "NoneBG - Free and no ADS Tool",
+  description: "Free no ADS Background Remove Tool",
   icons: {
     icon: "/fav.png",
     shortcut: "/fav.png",
