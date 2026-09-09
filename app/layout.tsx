@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     description: "Remove background image gratis tanpa iklan.",
     images: ["/NoneBG.png"],
   },
-  metadataBase: new URL("https://nonebg.vercel.app"),
+  metadataBase: new URL("https://nonebg.laheca.my.id"),
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
