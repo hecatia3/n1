@@ -2,24 +2,24 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NoneBG - Free and no ADS Background Tool",
-  description: "Free and no ADS Background Tool",
+  title: "nonebg — cut backgrounds, keep it free",
+  description: "Remove image backgrounds for free. No ads, no signup.",
   icons: {
     icon: "/fav.png",
     shortcut: "/fav.png",
     apple: "/fav.png",
   },
   openGraph: {
-    title: "NoneBG - Free no ADS Background Tool",
+    title: "nonebg — cut backgrounds, keep it free",
     description: "Remove background image secara gratis tanpa iklan!",
     url: "https://nonebg.vercel.app",
-    siteName: "NoneBG",
+    siteName: "nonebg",
     images: [
       {
         url: "/NoneBG.png",
         width: 1200,
         height: 630,
-        alt: "NoneBG Preview",
+        alt: "nonebg preview",
       },
     ],
     locale: "en_US",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "NoneBG",
+    title: "nonebg",
     description: "Remove background image gratis tanpa iklan.",
     images: ["/NoneBG.png"],
   },
