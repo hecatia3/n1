@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "nonebg — cut backgrounds, keep it free",
     description: "Remove background image secara gratis tanpa iklan!",
-    url: "https://nonebg.vercel.app",
+    url: "https://nonebg.laheca.my.id",
     siteName: "nonebg",
     images: [
       {
