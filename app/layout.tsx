@@ -5,9 +5,9 @@ export const metadata: Metadata = {
   title: "nonebg — cut backgrounds, keep it free",
   description: "Remove image backgrounds for free. No ads, no signup.",
   icons: {
-    icon: "/fav.png",
-    shortcut: "/fav.png",
-    apple: "/fav.png",
+    icon: "app/fav.png",
+    shortcut: "app/fav.png",
+    apple: "app/fav.png",
   },
   openGraph: {
     title: "nonebg — cut backgrounds, keep it free",
