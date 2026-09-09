@@ -26,6 +26,8 @@ export default function Win95Home() {
   const [igSelected, setIgSelected] = useState(false);
   const [notepadOpen, setNotepadOpen] = useState(false);
   const [notepadSelected, setNotepadSelected] = useState(false);
+  const [windowOpen, setWindowOpen] = useState(false);
+  const [appSelected, setAppSelected] = useState(false);
   const [gifMissing, setGifMissing] = useState(false);
   const [gifIndex, setGifIndex] = useState(0);
   const [customGifUrl, setCustomGifUrl] = useState<string | null>(null);
@@ -190,6 +192,7 @@ export default function Win95Home() {
         if (startOpen) setStartOpen(false);
         if (igSelected) setIgSelected(false);
         if (notepadSelected) setNotepadSelected(false);
+        if (appSelected) setAppSelected(false);
       }}
     >
       {/* DESKTOP ICONS */}
@@ -232,7 +235,29 @@ export default function Win95Home() {
         <span className="desktop-icon-label">readme.txt</span>
       </button>
 
+      <button
+        className={`desktop-icon desktop-icon-3 ${appSelected ? "selected" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setAppSelected(true);
+          setWindowOpen(true);
+          setMinimized(false);
+        }}
+        title="Buka nonebg.exe"
+      >
+        <svg viewBox="0 0 32 32" className="desktop-icon-art" shapeRendering="crispEdges">
+          <rect x="4" y="4" width="24" height="24" fill="#ffffff" stroke="#000000" strokeWidth="1.5" />
+          <rect x="4" y="4" width="24" height="6" fill="#000080" />
+          <rect x="6" y="6" width="3" height="2" fill="#ffffff" />
+          <path d="M11 14 L21 24 M21 14 L11 24" stroke="#000000" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="11" cy="14" r="1.6" fill="#000000" />
+          <circle cx="11" cy="24" r="1.6" fill="#000000" />
+        </svg>
+        <span className="desktop-icon-label">nonebg.exe</span>
+      </button>
+
       {/* WINDOW */}
+      {windowOpen && (
       <div className={`window ${maximized ? "maximized" : ""}`}>
         <div className="titlebar">
           <div className="titlebar-left">
@@ -253,7 +278,7 @@ export default function Win95Home() {
             <button className="win-btn" title="Maximize" onClick={() => setMaximized((m) => !m)}>
               □
             </button>
-            <button className="win-btn win-close" title="Bersihkan" onClick={handleClear}>
+            <button className="win-btn win-close" title="Tutup" onClick={() => setWindowOpen(false)}>
               ×
             </button>
           </div>
@@ -366,6 +391,7 @@ export default function Win95Home() {
           </>
         )}
       </div>
+      )}
 
       {/* NOTEPAD — tentang web */}
       {notepadOpen && (
@@ -539,9 +565,11 @@ Tips:
           </div>
         )}
         <div className="taskbar-sep" />
-        <button className="task-item active" onClick={() => setMinimized((m) => !m)}>
-          ✂ nonebg.exe
-        </button>
+        {windowOpen && (
+          <button className="task-item active" onClick={() => setMinimized((m) => !m)}>
+            ✂ nonebg.exe
+          </button>
+        )}
         <div className="taskbar-spacer" />
         <div className="tray">
           <button
@@ -615,6 +643,9 @@ Tips:
         }
         .desktop-icon-2 {
           top: 122px;
+        }
+        .desktop-icon-3 {
+          top: 224px;
         }
 
         .notepad-window {
