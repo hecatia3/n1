@@ -27,6 +27,8 @@ export default function Win95Home() {
   const [notepadSelected, setNotepadSelected] = useState(false);
   const [windowOpen, setWindowOpen] = useState(false);
   const [appSelected, setAppSelected] = useState(false);
+  const [upscalerOpen, setUpscalerOpen] = useState(false);
+  const [upscalerSelected, setUpscalerSelected] = useState(false);
   const [gifMissing, setGifMissing] = useState(false);
   const [gifIndex, setGifIndex] = useState(0);
   const [customGifUrl, setCustomGifUrl] = useState<string | null>(null);
@@ -248,6 +250,7 @@ export default function Win95Home() {
         if (igSelected) setIgSelected(false);
         if (notepadSelected) setNotepadSelected(false);
         if (appSelected) setAppSelected(false);
+        if (upscalerSelected) setUpscalerSelected(false);
       }}
     >
       {/* DESKTOP ICONS */}
@@ -309,6 +312,26 @@ export default function Win95Home() {
           <circle cx="11" cy="24" r="1.6" fill="#000000" />
         </svg>
         <span className="desktop-icon-label">nonebg.exe</span>
+      </button>
+
+      <button
+        className={`desktop-icon desktop-icon-4 ${upscalerSelected ? "selected" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setUpscalerSelected(true);
+          setUpscalerOpen(true);
+        }}
+        title="Buka Upscaler.exe"
+      >
+        <svg viewBox="0 0 32 32" className="desktop-icon-art" shapeRendering="crispEdges">
+          <rect x="4" y="4" width="24" height="24" fill="#ffffff" stroke="#000000" strokeWidth="1.5" />
+          <rect x="4" y="4" width="24" height="6" fill="#000080" />
+          <rect x="6" y="6" width="3" height="2" fill="#ffffff" />
+          <rect x="9" y="12" width="8" height="8" fill="none" stroke="#000000" strokeWidth="1.5" />
+          <rect x="15" y="18" width="8" height="8" fill="none" stroke="#000000" strokeWidth="1.5" />
+          <path d="M18 14 L24 8 M24 8 L19 8 M24 8 L24 13" stroke="#000000" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="desktop-icon-label">Upscaler.exe</span>
       </button>
 
       {/* WINDOW */}
@@ -516,6 +539,46 @@ Tips:
         </div>
       )}
 
+      {/* UPSCALER — masih coming soon */}
+      {upscalerOpen && (
+        <div className="notepad-window">
+          <div className="window notepad">
+            <div className="titlebar">
+              <div className="titlebar-left">
+                <span className="titlebar-icon">🔍</span>
+                <span>Upscaler.exe</span>
+              </div>
+              <div className="titlebar-controls">
+                <button className="win-btn" title="Tutup" onClick={() => setUpscalerOpen(false)}>
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="menubar">
+              <span onClick={() => setUpscalerOpen(false)}>
+                <u>F</u>ile
+              </span>
+              <span onClick={() => pushNote("Belum ada yang bisa diatur di sini.", "warn")}>
+                <u>V</u>iew
+              </span>
+              <span onClick={() => pushNote("Fitur upscaler lagi disiapin, tunggu update ya!", "ok")}>
+                <u>H</u>elp
+              </span>
+            </div>
+            <div className="comingsoon-body">
+              <div className="comingsoon-icon">🚧</div>
+              <div className="comingsoon-title">Coming Soon</div>
+              <div className="comingsoon-text">
+                Fitur upscale gambar lagi disiapin. Balik lagi nanti ya!
+              </div>
+            </div>
+            <div className="statusbar">
+              <div className="status-panel status-main">Belum tersedia</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* GIF FRAME — pilihan acak dari GIF_OPTIONS, atau ganti langsung lewat tombol */}
       <div className="gif-frame-wrap">
         <button className="gif-swap-btn" onClick={() => gifInput.current?.click()}>
@@ -710,6 +773,30 @@ Tips:
         }
         .desktop-icon-3 {
           top: 224px;
+        }
+        .desktop-icon-4 {
+          top: 326px;
+        }
+
+        .comingsoon-body {
+          padding: 30px 16px;
+          text-align: center;
+        }
+        .comingsoon-icon {
+          font-size: 32px;
+          margin-bottom: 8px;
+        }
+        .comingsoon-title {
+          font-weight: bold;
+          font-size: 15px;
+          margin-bottom: 6px;
+        }
+        .comingsoon-text {
+          font-size: 11px;
+          opacity: 0.75;
+          max-width: 280px;
+          margin: 0 auto;
+          line-height: 1.5;
         }
 
         .notepad-window {
