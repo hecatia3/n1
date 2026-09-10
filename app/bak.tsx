@@ -1,9 +1,13 @@
 "use client";
+import { Client } from "@gradio/client";
 import { useState, useRef, useCallback, useEffect } from "react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:7860";
+// Kumpulan GIF desktop — taruh file-filenya di /public lalu tambah/ganti
+// path di bawah ini. Salah satunya dipilih acak tiap kali halaman dibuka
+// atau di-reload.
+const GIF_OPTIONS = ["/1.gif", "/2.gif", "/3.gif", "/4.gif", "/5.gif","/6.gif","/7.gif","/8.gif","/9.gif","/10.gif", "/11.gif",];
 
-type Phase = "idle" | "uploading" | "processing" | "done";
+type Phase = "idle" | "uploading" | "queued" | "processing" | "done";
 type Note = { id: number; message: string; icon: "warn" | "ok" };
 type Theme = "light" | "dark";
 
@@ -20,6 +24,18 @@ export default function Win95Home() {
   const [startOpen, setStartOpen] = useState(false);
   const [clock, setClock] = useState("00:00");
   const [igSelected, setIgSelected] = useState(false);
+  const [notepadOpen, setNotepadOpen] = useState(false);
+  const [notepadSelected, setNotepadSelected] = useState(false);
+  const [windowOpen, setWindowOpen] = useState(false);
+  const [appSelected, setAppSelected] = useState(false);
+  const [gifMissing, setGifMissing] = useState(false);
+  const [gifIndex, setGifIndex] = useState(0);
+  const [customGifUrl, setCustomGifUrl] = useState<string | null>(null);
+  const gifInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setGifIndex(Math.floor(Math.random() * GIF_OPTIONS.length));
+  }, []);
 
   const [image, setImage] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -30,10 +46,9 @@ export default function Win95Home() {
   const [sliderPos, setSliderPos] = useState(50);
   const [notes, setNotes] = useState<Note[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
-  const compareRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
-
+const gradioJobRef = useRef<any>(null);
+const compareRef = useRef<HTMLDivElement>(null);
+const draggingRef = useRef(false);
   useEffect(() => {
     const saved = (typeof window !== "undefined" && localStorage.getItem("nonebg-theme")) as Theme | null;
     if (saved === "light" || saved === "dark") setTheme(saved);
@@ -68,7 +83,7 @@ export default function Win95Home() {
     return () => URL.revokeObjectURL(url);
   }, [image]);
 
-  const loading = phase === "uploading" || phase === "processing";
+const loading = phase === "uploading" || phase === "processing";
 
   const acceptFile = (file: File | undefined) => {
     if (!file) return;
@@ -88,58 +103,95 @@ export default function Win95Home() {
     acceptFile(e.dataTransfer.files?.[0]);
   };
 
-  const handleUpload = () => {
-    if (!image) return;
-    setPhase("uploading");
-    setUploadPct(0);
-    setResult(null);
+const handleUpload = async () => {
+  if (!image) return;
 
-    const formData = new FormData();
-    formData.append("file", image);
+  setPhase("uploading");
+  setUploadPct(0);
+  setResult(null);
 
-    const xhr = new XMLHttpRequest();
-    xhrRef.current = xhr;
-    xhr.open("POST", `${BACKEND_URL}/remove-bg`);
-    xhr.responseType = "blob";
+  try {
+    const client = await Client.connect("hecatia3/n2");
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        setUploadPct(pct);
-        if (pct >= 100) setPhase("processing");
+    setUploadPct(100);
+    setPhase("queued");
+
+    const job = client.submit("/remove_bg", {
+      image,
+    });
+
+    gradioJobRef.current = job;
+
+    // Dengarkan status job dari Gradio
+    job.on("status", (status) => {
+      console.log("Gradio status:", status);
+
+      if (status.stage === "pending") {
+        setPhase("queued");
       }
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        setResult(URL.createObjectURL(xhr.response as Blob));
+
+      if (status.stage === "generating") {
+        setPhase("processing");
+      }
+
+      if (status.stage === "complete") {
         setPhase("done");
-        pushNote("Background berhasil dihapus.", "ok");
-      } else {
-        setPhase("idle");
-        pushNote("Operasi gagal. Coba jalankan ulang.");
       }
-    };
-    xhr.onerror = () => {
+    });
+
+    const response = await job;
+
+    const data = response.data as any[];
+    const output = data[0];
+
+    if (!output) {
+      throw new Error("Output Gradio kosong");
+    }
+
+    const outputUrl =
+      typeof output === "string"
+        ? output
+        : output.url ?? output.path;
+
+    if (!outputUrl) {
+      console.error("Output Gradio:", output);
+      throw new Error("URL output tidak ditemukan");
+    }
+
+    setResult(outputUrl);
+    setPhase("done");
+    pushNote("Background berhasil dihapus.", "ok");
+  } catch (err: any) {
+    if (
+      err?.message?.toLowerCase().includes("cancel") ||
+      err?.message?.toLowerCase().includes("abort")
+    ) {
       setPhase("idle");
-      pushNote("Tidak dapat terhubung ke server.");
-    };
-    xhr.send(formData);
-  };
+      return;
+    }
 
-  const handleCancel = () => {
-    xhrRef.current?.abort();
+    console.error("Gradio error:", err);
     setPhase("idle");
-    pushNote("Operasi dibatalkan.");
-  };
+    pushNote("Operasi gagal. Tidak dapat memproses gambar.");
+  } finally {
+    gradioJobRef.current = null;
+  }
+};
+const handleCancel = () => {
+  setPhase("idle");
+  pushNote("Operasi dibatalkan.");
+};
 
-  const handleClear = () => {
-    xhrRef.current?.abort();
-    setImage(null);
-    setResult(null);
-    setPhase("idle");
-    setUploadPct(0);
-    if (fileInput.current) fileInput.current.value = "";
-  };
+const handleClear = () => {
+  setImage(null);
+  setResult(null);
+  setPhase("idle");
+  setUploadPct(0);
+
+  if (fileInput.current) {
+    fileInput.current.value = "";
+  }
+};
 
   const handleDownload = () => {
     if (!result) return;
@@ -147,6 +199,18 @@ export default function Win95Home() {
     a.href = result;
     a.download = "nonebg-output.png";
     a.click();
+  };
+
+  const handleGifChange = (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      pushNote("File itu bukan gambar/GIF.");
+      return;
+    }
+    if (customGifUrl) URL.revokeObjectURL(customGifUrl);
+    setCustomGifUrl(URL.createObjectURL(file));
+    setGifMissing(false);
+    pushNote("GIF diganti.", "ok");
   };
 
   const updateSlider = (clientX: number) => {
@@ -163,6 +227,8 @@ export default function Win95Home() {
       onClick={() => {
         if (startOpen) setStartOpen(false);
         if (igSelected) setIgSelected(false);
+        if (notepadSelected) setNotepadSelected(false);
+        if (appSelected) setAppSelected(false);
       }}
     >
       {/* DESKTOP ICONS */}
@@ -186,7 +252,48 @@ export default function Win95Home() {
         <span className="desktop-icon-label">Instagram</span>
       </button>
 
+      <button
+        className={`desktop-icon desktop-icon-2 ${notepadSelected ? "selected" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setNotepadSelected(true);
+          setNotepadOpen(true);
+        }}
+        title="Buka readme.txt"
+      >
+        <svg viewBox="0 0 32 32" className="desktop-icon-art" shapeRendering="crispEdges">
+          <polygon points="7,3 20,3 26,9 26,29 7,29" fill="#ffffff" stroke="#000000" strokeWidth="1.5" />
+          <polygon points="20,3 20,9 26,9" fill="#c0c0c0" stroke="#000000" strokeWidth="1.5" />
+          <rect x="10" y="14" width="12" height="1.5" fill="#000000" />
+          <rect x="10" y="18" width="12" height="1.5" fill="#000000" />
+          <rect x="10" y="22" width="8" height="1.5" fill="#000000" />
+        </svg>
+        <span className="desktop-icon-label">readme.txt</span>
+      </button>
+
+      <button
+        className={`desktop-icon desktop-icon-3 ${appSelected ? "selected" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setAppSelected(true);
+          setWindowOpen(true);
+          setMinimized(false);
+        }}
+        title="Buka nonebg.exe"
+      >
+        <svg viewBox="0 0 32 32" className="desktop-icon-art" shapeRendering="crispEdges">
+          <rect x="4" y="4" width="24" height="24" fill="#ffffff" stroke="#000000" strokeWidth="1.5" />
+          <rect x="4" y="4" width="24" height="6" fill="#000080" />
+          <rect x="6" y="6" width="3" height="2" fill="#ffffff" />
+          <path d="M11 14 L21 24 M21 14 L11 24" stroke="#000000" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="11" cy="14" r="1.6" fill="#000000" />
+          <circle cx="11" cy="24" r="1.6" fill="#000000" />
+        </svg>
+        <span className="desktop-icon-label">nonebg.exe</span>
+      </button>
+
       {/* WINDOW */}
+      {windowOpen && (
       <div className={`window ${maximized ? "maximized" : ""}`}>
         <div className="titlebar">
           <div className="titlebar-left">
@@ -207,7 +314,7 @@ export default function Win95Home() {
             <button className="win-btn" title="Maximize" onClick={() => setMaximized((m) => !m)}>
               □
             </button>
-            <button className="win-btn win-close" title="Bersihkan" onClick={handleClear}>
+            <button className="win-btn win-close" title="Tutup" onClick={() => setWindowOpen(false)}>
               ×
             </button>
           </div>
@@ -219,13 +326,13 @@ export default function Win95Home() {
               <span onClick={() => fileInput.current?.click()}>
                 <u>F</u>ile
               </span>
-              <span onClick={() => pushNote("Edit apaan?.", "warn")}>
+              <span onClick={() => pushNote("nguwawor.", "warn")}>
                 <u>E</u>dit
               </span>
               <span onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}>
                 <u>V</u>iew
               </span>
-              <span onClick={() => pushNote("support creator? https://saweria.co/Hecapondasi .", "ok")}>
+              <span onClick={() => pushNote("nonebg — alat hapus background gratis, tanpa iklan.", "ok")}>
                 <u>H</u>elp
               </span>
             </div>
@@ -306,19 +413,119 @@ export default function Win95Home() {
               </fieldset>
             </div>
 
-            <div className="statusbar">
-              <div className="status-panel status-main">
-                {phase === "uploading" && "Mengunggah…"}
-                {phase === "processing" && "Memproses…"}
-                {phase === "idle" && !image && "Siap."}
-                {phase === "idle" && image && "Gambar dipilih."}
-                {phase === "done" && "Selesai."}
-              </div>
-              <div className="status-panel">rembg engine</div>
-              <div className="status-panel">{theme === "light" ? "Mode terang" : "Mode gelap"}</div>
-            </div>
+<div className="statusbar">
+  <div className="status-panel status-main">
+    {phase === "uploading" && "Mengunggah…"}
+    {phase === "queued" && "Menunggu ZeroGPU…"}
+    {phase === "processing" && "Memproses…"}
+    {phase === "idle" && !image && "Siap."}
+    {phase === "idle" && image && "Gambar dipilih."}
+    {phase === "done" && "Selesai."}
+  </div>
+  <div className="status-panel">rembg engine</div>
+  <div className="status-panel">
+    {theme === "light" ? "Mode terang" : "Mode gelap"}
+  </div>
+</div>
           </>
         )}
+      </div>
+      )}
+
+      {/* NOTEPAD — tentang web */}
+      {notepadOpen && (
+        <div className="notepad-window">
+          <div className="window notepad">
+            <div className="titlebar">
+              <div className="titlebar-left">
+                <span className="titlebar-icon">📝</span>
+                <span>readme.txt - Notepad</span>
+              </div>
+              <div className="titlebar-controls">
+                <button className="win-btn" title="Tutup" onClick={() => setNotepadOpen(false)}>
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="menubar">
+              <span onClick={() => setNotepadOpen(false)}>
+                <u>F</u>ile
+              </span>
+              <span onClick={() => pushNote("Tidak ada teks untuk diedit.", "warn")}>
+                <u>E</u>dit
+              </span>
+              <span onClick={() => pushNote("Tidak ada hasil pencarian.", "warn")}>
+                <u>S</u>earch
+              </span>
+              <span onClick={() => pushNote("support https://saweria.co/Hecapondasi.", "ok")}>
+                <u>H</u>elp
+              </span>
+            </div>
+            <div className="notepad-body">
+              <pre className="notepad-text">{`NONEBG - Free Background Remover
+=================================
+
+Apa ini?
+nonebg adalah alat hapus background gambar
+yang gratis dan tanpa iklan. Tinggal taruh
+gambar, klik "Hapus background", selesai.
+
+Ditenagai oleh:
+rembg (open-source), oleh danielgatis
+https://github.com/danielgatis/rembg
+
+Kenapa dibikin?
+Karena banyak tool sejenis di internet penuh
+iklan, minta akun, atau ujung-ujungnya bayar
+buat unduh hasil resolusi penuh. nonebg nggak
+begitu.
+
+Dibuat oleh:
+@c_7.29 (Instagram)
+
+Tips:
+- Geser slider di hasil buat lihat before/after
+- Tema gelap/terang ada di title bar & tray
+- File kamu diproses lalu langsung dibuang,
+  nggak disimpan di server
+`}</pre>
+            </div>
+            <div className="statusbar">
+              <div className="status-panel status-main">readme.txt</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GIF FRAME — pilihan acak dari GIF_OPTIONS, atau ganti langsung lewat tombol */}
+      <div className="gif-frame-wrap">
+        <button className="gif-swap-btn" onClick={() => gifInput.current?.click()}>
+          Ganti
+        </button>
+        <div className="gif-frame">
+          {!gifMissing || customGifUrl ? (
+            <img
+              src={customGifUrl ?? GIF_OPTIONS[gifIndex]}
+              alt=""
+              className="gif-frame-img"
+              onError={() => !customGifUrl && setGifMissing(true)}
+            />
+          ) : (
+            <span className="gif-frame-placeholder">
+              Taruh GIF di
+              <br />
+              {GIF_OPTIONS[gifIndex]}
+            </span>
+          )}
+        </div>
+        <span className="gif-credit">gif by seseren</span>
+        <input
+          type="file"
+          accept="image/*"
+          className="hidden-input"
+          ref={gifInput}
+          onChange={(e) => handleGifChange(e.target.files?.[0])}
+        />
       </div>
 
       {/* PROCESSING DIALOG */}
@@ -328,7 +535,14 @@ export default function Win95Home() {
             <div className="titlebar">
               <div className="titlebar-left">
                 <span className="titlebar-icon">⏳</span>
-                <span>{phase === "uploading" ? "Mengunggah" : "Memproses"}</span>
+{phase === "uploading" ? (
+  <div
+    className="progress-fill"
+    style={{ width: `${uploadPct}%` }}
+  />
+) : (
+  <div className="progress-fill progress-indeterminate" />
+)}
               </div>
             </div>
             <div className="window-body dialog-body">
@@ -391,15 +605,17 @@ export default function Win95Home() {
               Ganti tema
             </div>
             <div className="start-sep" />
-            <div className="start-item" onClick={() => { pushNote("Ngapain Njir", "ok"); setStartOpen(false); }}>
+            <div className="start-item" onClick={() => { pushNote("ngapain njir", "ok"); setStartOpen(false); }}>
               Shut Down…
             </div>
           </div>
         )}
         <div className="taskbar-sep" />
-        <button className="task-item active" onClick={() => setMinimized((m) => !m)}>
-          ✂ nonebg.exe
-        </button>
+        {windowOpen && (
+          <button className="task-item active" onClick={() => setMinimized((m) => !m)}>
+            ✂ nonebg.exe
+          </button>
+        )}
         <div className="taskbar-spacer" />
         <div className="tray">
           <button
@@ -470,6 +686,113 @@ export default function Win95Home() {
         }
         .theme-dark .desktop-icon.selected .desktop-icon-label {
           background: #7c3aed;
+        }
+        .desktop-icon-2 {
+          top: 122px;
+        }
+        .desktop-icon-3 {
+          top: 224px;
+        }
+
+        .notepad-window {
+          position: fixed;
+          top: 90px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 55;
+          width: 92%;
+          max-width: 460px;
+        }
+        .notepad {
+          width: 100%;
+          margin: 0;
+        }
+        .notepad-body {
+          padding: 0;
+        }
+        .theme-light .notepad-body {
+          background: #fff;
+        }
+        .theme-dark .notepad-body {
+          background: #211f28;
+        }
+        .notepad-text {
+          margin: 0;
+          padding: 10px;
+          font-family: "Cascadia Code", "Courier New", monospace;
+          font-size: 12px;
+          line-height: 1.5;
+          white-space: pre-wrap;
+          max-height: 320px;
+          overflow-y: auto;
+          color: inherit;
+        }
+
+        .gif-frame-wrap {
+          position: fixed;
+          right: 20px;
+          bottom: 52px;
+          width: 110px;
+          z-index: 10;
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 4px;
+        }
+        .gif-swap-btn {
+          padding: 3px 0;
+          font-family: inherit;
+          font-size: 11px;
+          cursor: pointer;
+          color: #000;
+        }
+        .theme-light .gif-swap-btn {
+          background: #c0c0c0;
+          border: 2px outset #c0c0c0;
+        }
+        .theme-dark .gif-swap-btn {
+          background: #35313f;
+          border: 2px outset #35313f;
+          color: #e8e6f0;
+        }
+        .gif-swap-btn:active {
+          border-style: inset;
+        }
+        .gif-credit {
+          text-align: center;
+          font-size: 10px;
+          opacity: 0.75;
+          color: #fff;
+          text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.7);
+          user-select: none;
+        }
+        .gif-frame {
+          width: 110px;
+          height: 110px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+        .theme-light .gif-frame {
+          background: #e8e6da;
+          border: 2px inset #c0c0c0;
+        }
+        .theme-dark .gif-frame {
+          background: #211f28;
+          border: 2px inset #35313f;
+        }
+        .gif-frame-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .gif-frame-placeholder {
+          font-size: 9px;
+          text-align: center;
+          color: #555;
+          padding: 4px;
+          word-break: break-word;
         }
         .theme-light {
           background: #008080;
@@ -614,10 +937,22 @@ export default function Win95Home() {
           cursor: pointer;
         }
         .theme-light .dropzone {
-          background: #fff;
+          background-color: #d8d5c6;
+          background-image: linear-gradient(45deg, #c3c0b1 25%, transparent 25%),
+            linear-gradient(-45deg, #c3c0b1 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #c3c0b1 75%),
+            linear-gradient(-45deg, transparent 75%, #c3c0b1 75%);
+          background-size: 20px 20px;
+          background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
         }
         .theme-dark .dropzone {
-          background: #211f28;
+          background-color: #2a2833;
+          background-image: linear-gradient(45deg, #221f2a 25%, transparent 25%),
+            linear-gradient(-45deg, #221f2a 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #221f2a 75%),
+            linear-gradient(-45deg, transparent 75%, #221f2a 75%);
+          background-size: 20px 20px;
+          background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
           border-color: #1c1a22 #55506a #55506a #1c1a22;
         }
         .dropzone.drag-active {
