@@ -102,15 +102,54 @@ export default function Win95Home() {
     acceptFile(e.dataTransfer.files?.[0]);
   };
 
-  const handleUpload = () => {
+  // Vercel Serverless Function punya batas ukuran request ~4.5MB (nggak
+  // bisa dinaikkan). Kalau file lebih besar dari itu, kecilin dulu di
+  // browser (resize + re-encode ke JPEG) sebelum dikirim ke /api/remove-bg.
+  const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+  const prepareImage = async (file: File): Promise<File> => {
+    if (file.size <= MAX_UPLOAD_BYTES) return file;
+
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxDim = 2000;
+      const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return file;
+      ctx.drawImage(bitmap, 0, 0, width, height);
+
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.88)
+      );
+      if (!blob) return file;
+
+      return new File(
+        [blob],
+        file.name.replace(/\.[^.]+$/, "") + ".jpg",
+        { type: "image/jpeg" }
+      );
+    } catch (err) {
+      console.error("Gagal kompres gambar:", err);
+      return file;
+    }
+  };
+
+  const handleUpload = async () => {
     if (!image) return;
 
     setPhase("uploading");
     setUploadPct(0);
     setResult(null);
 
+    const preparedImage = await prepareImage(image);
+
     const formData = new FormData();
-    formData.append("file", image);
+    formData.append("file", preparedImage);
 
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
@@ -132,12 +171,16 @@ export default function Win95Home() {
         pushNote("Background berhasil dihapus.", "ok");
       } else {
         let message = "Operasi gagal. Tidak dapat memproses gambar.";
-        try {
-          const text = await (xhr.response as Blob).text();
-          const parsed = JSON.parse(text);
-          if (parsed?.error) message = parsed.error;
-        } catch {
-          // respons bukan JSON, pakai pesan default
+        if (xhr.status === 413) {
+          message = "Gambar masih terlalu besar buat server. Coba pakai foto lain.";
+        } else {
+          try {
+            const text = await (xhr.response as Blob).text();
+            const parsed = JSON.parse(text);
+            if (parsed?.error) message = parsed.error;
+          } catch {
+            // respons bukan JSON, pakai pesan default
+          }
         }
         setPhase("idle");
         pushNote(message);
