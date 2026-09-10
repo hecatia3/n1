@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const token = process.env.HF_TOKEN;
+    const token = process.env.HF_TOKEN as `hf_${string}` | undefined;
 
     if (!token) {
       return NextResponse.json(
