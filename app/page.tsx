@@ -1,13 +1,13 @@
 "use client";
+import { Client } from "@gradio/client";
 import { useState, useRef, useCallback, useEffect } from "react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:7860";
 // Kumpulan GIF desktop — taruh file-filenya di /public lalu tambah/ganti
 // path di bawah ini. Salah satunya dipilih acak tiap kali halaman dibuka
 // atau di-reload.
 const GIF_OPTIONS = ["/1.gif", "/2.gif", "/3.gif", "/4.gif", "/5.gif","/6.gif","/7.gif","/8.gif","/9.gif","/10.gif", "/11.gif",];
 
-type Phase = "idle" | "uploading" | "processing" | "done";
+type Phase = "idle" | "uploading" | "queued" | "processing" | "done";
 type Note = { id: number; message: string; icon: "warn" | "ok" };
 type Theme = "light" | "dark";
 
@@ -46,10 +46,9 @@ export default function Win95Home() {
   const [sliderPos, setSliderPos] = useState(50);
   const [notes, setNotes] = useState<Note[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
-  const compareRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
-
+const gradioJobRef = useRef<any>(null);
+const compareRef = useRef<HTMLDivElement>(null);
+const draggingRef = useRef(false);
   useEffect(() => {
     const saved = (typeof window !== "undefined" && localStorage.getItem("nonebg-theme")) as Theme | null;
     if (saved === "light" || saved === "dark") setTheme(saved);
@@ -84,7 +83,7 @@ export default function Win95Home() {
     return () => URL.revokeObjectURL(url);
   }, [image]);
 
-  const loading = phase === "uploading" || phase === "processing";
+const loading = phase === "uploading" || phase === "processing";
 
   const acceptFile = (file: File | undefined) => {
     if (!file) return;
@@ -104,58 +103,95 @@ export default function Win95Home() {
     acceptFile(e.dataTransfer.files?.[0]);
   };
 
-  const handleUpload = () => {
-    if (!image) return;
-    setPhase("uploading");
-    setUploadPct(0);
-    setResult(null);
+const handleUpload = async () => {
+  if (!image) return;
 
-    const formData = new FormData();
-    formData.append("file", image);
+  setPhase("uploading");
+  setUploadPct(0);
+  setResult(null);
 
-    const xhr = new XMLHttpRequest();
-    xhrRef.current = xhr;
-    xhr.open("POST", `${BACKEND_URL}/remove-bg`);
-    xhr.responseType = "blob";
+  try {
+    const client = await Client.connect("hecatia3/n2");
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        setUploadPct(pct);
-        if (pct >= 100) setPhase("processing");
+    setUploadPct(100);
+    setPhase("queued");
+
+    const job = client.submit("/remove_bg", {
+      image,
+    });
+
+    gradioJobRef.current = job;
+
+    // Dengarkan status job dari Gradio
+    job.on("status", (status) => {
+      console.log("Gradio status:", status);
+
+      if (status.stage === "pending") {
+        setPhase("queued");
       }
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        setResult(URL.createObjectURL(xhr.response as Blob));
+
+      if (status.stage === "generating") {
+        setPhase("processing");
+      }
+
+      if (status.stage === "complete") {
         setPhase("done");
-        pushNote("Background berhasil dihapus.", "ok");
-      } else {
-        setPhase("idle");
-        pushNote("Operasi gagal. Coba jalankan ulang.");
       }
-    };
-    xhr.onerror = () => {
+    });
+
+    const response = await job;
+
+    const data = response.data as any[];
+    const output = data[0];
+
+    if (!output) {
+      throw new Error("Output Gradio kosong");
+    }
+
+    const outputUrl =
+      typeof output === "string"
+        ? output
+        : output.url ?? output.path;
+
+    if (!outputUrl) {
+      console.error("Output Gradio:", output);
+      throw new Error("URL output tidak ditemukan");
+    }
+
+    setResult(outputUrl);
+    setPhase("done");
+    pushNote("Background berhasil dihapus.", "ok");
+  } catch (err: any) {
+    if (
+      err?.message?.toLowerCase().includes("cancel") ||
+      err?.message?.toLowerCase().includes("abort")
+    ) {
       setPhase("idle");
-      pushNote("Tidak dapat terhubung ke server.");
-    };
-    xhr.send(formData);
-  };
+      return;
+    }
 
-  const handleCancel = () => {
-    xhrRef.current?.abort();
+    console.error("Gradio error:", err);
     setPhase("idle");
-    pushNote("Operasi dibatalkan.");
-  };
+    pushNote("Operasi gagal. Tidak dapat memproses gambar.");
+  } finally {
+    gradioJobRef.current = null;
+  }
+};
+const handleCancel = () => {
+  setPhase("idle");
+  pushNote("Operasi dibatalkan.");
+};
 
-  const handleClear = () => {
-    xhrRef.current?.abort();
-    setImage(null);
-    setResult(null);
-    setPhase("idle");
-    setUploadPct(0);
-    if (fileInput.current) fileInput.current.value = "";
-  };
+const handleClear = () => {
+  setImage(null);
+  setResult(null);
+  setPhase("idle");
+  setUploadPct(0);
+
+  if (fileInput.current) {
+    fileInput.current.value = "";
+  }
+};
 
   const handleDownload = () => {
     if (!result) return;
@@ -377,17 +413,20 @@ export default function Win95Home() {
               </fieldset>
             </div>
 
-            <div className="statusbar">
-              <div className="status-panel status-main">
-                {phase === "uploading" && "Mengunggah…"}
-                {phase === "processing" && "Memproses…"}
-                {phase === "idle" && !image && "Siap."}
-                {phase === "idle" && image && "Gambar dipilih."}
-                {phase === "done" && "Selesai."}
-              </div>
-              <div className="status-panel">rembg engine</div>
-              <div className="status-panel">{theme === "light" ? "Mode terang" : "Mode gelap"}</div>
-            </div>
+<div className="statusbar">
+  <div className="status-panel status-main">
+    {phase === "uploading" && "Mengunggah…"}
+    {phase === "queued" && "Menunggu ZeroGPU…"}
+    {phase === "processing" && "Memproses…"}
+    {phase === "idle" && !image && "Siap."}
+    {phase === "idle" && image && "Gambar dipilih."}
+    {phase === "done" && "Selesai."}
+  </div>
+  <div className="status-panel">rembg engine</div>
+  <div className="status-panel">
+    {theme === "light" ? "Mode terang" : "Mode gelap"}
+  </div>
+</div>
           </>
         )}
       </div>
@@ -496,7 +535,14 @@ Tips:
             <div className="titlebar">
               <div className="titlebar-left">
                 <span className="titlebar-icon">⏳</span>
-                <span>{phase === "uploading" ? "Mengunggah" : "Memproses"}</span>
+{phase === "uploading" ? (
+  <div
+    className="progress-fill"
+    style={{ width: `${uploadPct}%` }}
+  />
+) : (
+  <div className="progress-fill progress-indeterminate" />
+)}
               </div>
             </div>
             <div className="window-body dialog-body">
