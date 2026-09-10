@@ -254,6 +254,7 @@ export default function Win95Home() {
       }}
     >
       {/* DESKTOP ICONS */}
+      <div className="desktop-icons">
       <button
         className={`desktop-icon ${igSelected ? "selected" : ""}`}
         onClick={(e) => {
@@ -333,6 +334,7 @@ export default function Win95Home() {
         </svg>
         <span className="desktop-icon-label">Upscaler.exe</span>
       </button>
+      </div>
 
       {/* WINDOW */}
       {windowOpen && (
@@ -666,7 +668,7 @@ Tips:
       {/* TASKBAR */}
       <div className="taskbar">
         <button className="start-btn" onClick={(e) => { e.stopPropagation(); setStartOpen((s) => !s); }}>
-          <span className="start-icon">▦</span> Start
+          <span className="start-icon">▦</span> <span className="start-label">Start</span>
         </button>
         {startOpen && (
           <div className="start-menu" onClick={(e) => e.stopPropagation()}>
@@ -714,6 +716,9 @@ Tips:
       </div>
 
       <style jsx>{`
+        .desktop-icons {
+          position: static;
+        }
         .desktop {
           position: relative;
           min-height: 100vh;
@@ -1459,6 +1464,126 @@ Tips:
         .theme-dark .start-sep {
           border-top-color: #1c1a22;
           border-bottom-color: #55506a;
+        }
+
+        /* ===== MOBILE ===== */
+        @media (max-width: 640px) {
+          .desktop {
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 10px 76px;
+          }
+
+          /* Icon jadi baris horizontal di atas window, bukan kolom
+             absolute di kiri — di layar sempit window full-width bakal
+             nutupin icon kalau posisinya tetap absolute. */
+          .desktop-icons {
+            position: static;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            max-width: 420px;
+            margin-bottom: 10px;
+          }
+          .desktop-icon,
+          .desktop-icon-2,
+          .desktop-icon-3,
+          .desktop-icon-4 {
+            position: static;
+            top: auto;
+            left: auto;
+            width: 64px;
+          }
+          .desktop-icon-art {
+            width: 28px;
+            height: 28px;
+          }
+
+          .window {
+            margin-top: 0;
+            max-width: 100%;
+          }
+
+          .win-btn,
+          .theme-btn {
+            width: 24px;
+            height: 22px;
+          }
+
+          .win-button {
+            padding: 8px 14px;
+            font-size: 13px;
+          }
+          .btn-row {
+            flex-direction: column;
+          }
+          .btn-row .win-button {
+            width: 100%;
+          }
+
+          .menubar {
+            gap: 10px;
+            padding: 5px 8px;
+            font-size: 13px;
+          }
+
+          .statusbar .status-panel:not(.status-main) {
+            display: none;
+          }
+
+          .notepad-window {
+            top: 16px;
+            width: calc(100% - 20px);
+          }
+          .notepad-text {
+            max-height: 44vh;
+          }
+
+          .dropzone {
+            height: 170px;
+          }
+
+          .notes {
+            left: 50%;
+            right: auto;
+            bottom: 44px;
+            transform: translateX(-50%);
+            width: calc(100% - 24px);
+            max-width: 320px;
+          }
+
+          .gif-frame-wrap {
+            right: 8px;
+            bottom: 44px;
+            width: 84px;
+          }
+          .gif-frame {
+            width: 84px;
+            height: 84px;
+          }
+          .gif-swap-btn {
+            font-size: 10px;
+            padding: 4px 0;
+          }
+          .gif-credit {
+            font-size: 9px;
+          }
+
+          .taskbar {
+            padding: 3px 4px;
+            gap: 4px;
+          }
+          .start-label {
+            display: none;
+          }
+          .task-item {
+            max-width: 30vw;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
         }
       `}</style>
     </div>
