@@ -46,9 +46,8 @@ export default function Win95Home() {
   const [sliderPos, setSliderPos] = useState(50);
   const [notes, setNotes] = useState<Note[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
-const gradioJobRef = useRef<any>(null);
-const compareRef = useRef<HTMLDivElement>(null);
-const draggingRef = useRef(false);
+  const compareRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
   useEffect(() => {
     const saved = (typeof window !== "undefined" && localStorage.getItem("nonebg-theme")) as Theme | null;
     if (saved === "light" || saved === "dark") setTheme(saved);
@@ -83,7 +82,7 @@ const draggingRef = useRef(false);
     return () => URL.revokeObjectURL(url);
   }, [image]);
 
-const loading = phase === "uploading" || phase === "processing";
+  const loading = phase === "uploading" || phase === "queued" || phase === "processing";
 
   const acceptFile = (file: File | undefined) => {
     if (!file) return;
@@ -103,7 +102,7 @@ const loading = phase === "uploading" || phase === "processing";
     acceptFile(e.dataTransfer.files?.[0]);
   };
 
-const handleUpload = async () => {
+  const handleUpload = async () => {
   if (!image) return;
 
   setPhase("uploading");
@@ -111,40 +110,19 @@ const handleUpload = async () => {
   setResult(null);
 
   try {
-    const client = await Client.connect("hecatia3/n2", {
-      events: ["data", "status"],
-    });
+    const client = await Client.connect("hecatia3/n2");
 
     setUploadPct(100);
-    setPhase("queued");
+    setPhase("processing");
 
-    const job = client.submit("/remove_bg", {
+    const response = await client.predict("/remove_bg", {
       image: handle_file(image),
     });
 
-    gradioJobRef.current = job;
+    console.log("Gradio response:", response);
+    console.log("Gradio data:", response.data);
 
-    let data: any[] | null = null;
-
-    for await (const event of job) {
-      if (event.type === "status") {
-        console.log("Gradio status:", event);
-
-        if (event.stage === "pending") {
-          setPhase("queued");
-        } else if (event.stage === "generating") {
-          setPhase("processing");
-        } else if (event.stage === "complete") {
-          setPhase("done");
-        }
-      }
-
-      if (event.type === "data") {
-        data = event.data as any[];
-      }
-    }
-
-    const output = data?.[0];
+    const output = (response.data as any[])?.[0];
 
     if (!output) {
       throw new Error("Output Gradio kosong");
@@ -153,38 +131,28 @@ const handleUpload = async () => {
     const outputUrl =
       typeof output === "string"
         ? output
-        : output.url ?? output.path;
+        : output.url ?? output.path ?? null;
 
     if (!outputUrl) {
-      console.error("Output Gradio:", output);
+      console.error("Output object:", output);
       throw new Error("URL output tidak ditemukan");
     }
 
     setResult(outputUrl);
     setPhase("done");
     pushNote("Background berhasil dihapus.", "ok");
-  } catch (err: any) {
-    if (
-      err?.message?.toLowerCase().includes("cancel") ||
-      err?.message?.toLowerCase().includes("abort")
-    ) {
-      setPhase("idle");
-      return;
-    }
-
+  } catch (err) {
     console.error("Gradio error:", err);
     setPhase("idle");
     pushNote("Operasi gagal. Tidak dapat memproses gambar.");
-  } finally {
-    gradioJobRef.current = null;
   }
 };
-const handleCancel = () => {
+  const handleCancel = () => {
   setPhase("idle");
   pushNote("Operasi dibatalkan.");
 };
 
-const handleClear = () => {
+  const handleClear = () => {
   setImage(null);
   setResult(null);
   setPhase("idle");
@@ -537,14 +505,13 @@ Tips:
             <div className="titlebar">
               <div className="titlebar-left">
                 <span className="titlebar-icon">⏳</span>
-{phase === "uploading" ? (
-  <div
-    className="progress-fill"
-    style={{ width: `${uploadPct}%` }}
-  />
-) : (
-  <div className="progress-fill progress-indeterminate" />
-)}
+                <span>
+                  {phase === "uploading"
+                    ? "Mengunggah"
+                    : phase === "queued"
+                      ? "Menunggu GPU"
+                      : "Memproses"}
+                </span>
               </div>
             </div>
             <div className="window-body dialog-body">
