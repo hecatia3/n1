@@ -1,5 +1,5 @@
 "use client";
-import { Client } from "@gradio/client";
+import { Client, handle_file } from "@gradio/client";
 import { useState, useRef, useCallback, useEffect } from "react";
 
 // Kumpulan GIF desktop — taruh file-filenya di /public lalu tambah/ganti
@@ -111,38 +111,40 @@ const handleUpload = async () => {
   setResult(null);
 
   try {
-    const client = await Client.connect("hecatia3/n2");
+    const client = await Client.connect("hecatia3/n2", {
+      events: ["data", "status"],
+    });
 
     setUploadPct(100);
     setPhase("queued");
 
     const job = client.submit("/remove_bg", {
-      image,
+      image: handle_file(image),
     });
 
     gradioJobRef.current = job;
 
-    // Dengarkan status job dari Gradio
-    job.on("status", (status) => {
-      console.log("Gradio status:", status);
+    let data: any[] | null = null;
 
-      if (status.stage === "pending") {
-        setPhase("queued");
+    for await (const event of job) {
+      if (event.type === "status") {
+        console.log("Gradio status:", event);
+
+        if (event.stage === "pending") {
+          setPhase("queued");
+        } else if (event.stage === "generating") {
+          setPhase("processing");
+        } else if (event.stage === "complete") {
+          setPhase("done");
+        }
       }
 
-      if (status.stage === "generating") {
-        setPhase("processing");
+      if (event.type === "data") {
+        data = event.data as any[];
       }
+    }
 
-      if (status.stage === "complete") {
-        setPhase("done");
-      }
-    });
-
-    const response = await job;
-
-    const data = response.data as any[];
-    const output = data[0];
+    const output = data?.[0];
 
     if (!output) {
       throw new Error("Output Gradio kosong");
