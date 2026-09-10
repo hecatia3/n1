@@ -1,5 +1,4 @@
 "use client";
-import { Client, handle_file } from "@gradio/client";
 import { useState, useRef, useCallback, useEffect } from "react";
 
 // Kumpulan GIF desktop — taruh file-filenya di /public lalu tambah/ganti
@@ -48,6 +47,7 @@ export default function Win95Home() {
   const fileInput = useRef<HTMLInputElement>(null);
   const compareRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
   useEffect(() => {
     const saved = (typeof window !== "undefined" && localStorage.getItem("nonebg-theme")) as Theme | null;
     if (saved === "light" || saved === "dark") setTheme(saved);
@@ -102,57 +102,63 @@ export default function Win95Home() {
     acceptFile(e.dataTransfer.files?.[0]);
   };
 
-  const handleUpload = async () => {
-  if (!image) return;
+  const handleUpload = () => {
+    if (!image) return;
 
-  setPhase("uploading");
-  setUploadPct(0);
-  setResult(null);
+    setPhase("uploading");
+    setUploadPct(0);
+    setResult(null);
 
-  try {
-    const client = await Client.connect("hecatia3/n2");
+    const formData = new FormData();
+    formData.append("file", image);
 
-    setUploadPct(100);
-    setPhase("processing");
+    const xhr = new XMLHttpRequest();
+    xhrRef.current = xhr;
+    xhr.open("POST", "/api/remove-bg");
+    xhr.responseType = "blob";
 
-    const response = await client.predict("/remove_bg", {
-      image: handle_file(image),
-    });
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        setUploadPct(pct);
+        if (pct >= 100) setPhase("processing");
+      }
+    };
 
-    console.log("Gradio response:", response);
-    console.log("Gradio data:", response.data);
+    xhr.onload = async () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setResult(URL.createObjectURL(xhr.response as Blob));
+        setPhase("done");
+        pushNote("Background berhasil dihapus.", "ok");
+      } else {
+        let message = "Operasi gagal. Tidak dapat memproses gambar.";
+        try {
+          const text = await (xhr.response as Blob).text();
+          const parsed = JSON.parse(text);
+          if (parsed?.error) message = parsed.error;
+        } catch {
+          // respons bukan JSON, pakai pesan default
+        }
+        setPhase("idle");
+        pushNote(message);
+      }
+    };
 
-    const output = (response.data as any[])?.[0];
+    xhr.onerror = () => {
+      setPhase("idle");
+      pushNote("Tidak dapat terhubung ke server.");
+    };
 
-    if (!output) {
-      throw new Error("Output Gradio kosong");
-    }
-
-    const outputUrl =
-      typeof output === "string"
-        ? output
-        : output.url ?? output.path ?? null;
-
-    if (!outputUrl) {
-      console.error("Output object:", output);
-      throw new Error("URL output tidak ditemukan");
-    }
-
-    setResult(outputUrl);
-    setPhase("done");
-    pushNote("Background berhasil dihapus.", "ok");
-  } catch (err) {
-    console.error("Gradio error:", err);
-    setPhase("idle");
-    pushNote("Operasi gagal. Tidak dapat memproses gambar.");
-  }
-};
+    xhr.send(formData);
+  };
   const handleCancel = () => {
-  setPhase("idle");
-  pushNote("Operasi dibatalkan.");
-};
+    xhrRef.current?.abort();
+    setPhase("idle");
+    pushNote("Operasi dibatalkan.");
+  };
 
   const handleClear = () => {
+  xhrRef.current?.abort();
   setImage(null);
   setResult(null);
   setPhase("idle");

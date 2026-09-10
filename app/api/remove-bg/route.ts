@@ -1,76 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Client, handle_file } from "@gradio/client";
+import { Client } from "@gradio/client";
 
+// Route ini jalan di server (bukan browser), jadi HF_TOKEN aman dan
+// tidak pernah terkirim ke client.
 export const runtime = "nodejs";
+
+const SPACE_ID = "hecatia3/n2";
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file");
 
-    if (!(file instanceof File)) {
+    if (!file || !(file instanceof Blob)) {
       return NextResponse.json(
-        { error: "File tidak ditemukan" },
+        { error: "Tidak ada file yang dikirim." },
         { status: 400 }
       );
     }
 
-    const token = process.env.HF_TOKEN as `hf_${string}` | undefined;
-
-    if (!token) {
+    const hfToken = process.env.HF_TOKEN;
+    if (!hfToken) {
+      console.error("HF_TOKEN belum di-set di environment variable server.");
       return NextResponse.json(
-        { error: "HF_TOKEN belum diset" },
+        { error: "Server belum dikonfigurasi dengan benar. Coba lagi nanti." },
         { status: 500 }
       );
     }
 
-    const client = await Client.connect("hecatia3/n2", {
-      hf_token: token,
+    const client = await Client.connect(SPACE_ID, {
+      hf_token: hfToken as `hf_${string}`,
     });
 
-    const result = await client.predict("/remove_bg", {
-      image: handle_file(file),
+    const response = await client.predict("/remove_bg", {
+      image: file,
     });
 
-    const output = (result.data as any[])?.[0];
-
-    if (!output) {
-      throw new Error("Output Hugging Face kosong");
-    }
-
+    const output = (response.data as any[])?.[0];
     const outputUrl =
-      typeof output === "string"
-        ? output
-        : output.url ?? output.path;
+      typeof output === "string" ? output : output?.url ?? output?.path ?? null;
 
     if (!outputUrl) {
-      throw new Error("URL output tidak ditemukan");
+      console.error("Gradio output tidak berisi url/path:", output);
+      return NextResponse.json(
+        { error: "Model tidak mengembalikan gambar." },
+        { status: 502 }
+      );
     }
 
-    const imageResponse = await fetch(outputUrl);
-
-    if (!imageResponse.ok) {
-      throw new Error("Gagal mengambil hasil gambar");
+    const imageRes = await fetch(outputUrl);
+    if (!imageRes.ok) {
+      return NextResponse.json(
+        { error: "Gagal mengambil hasil dari model." },
+        { status: 502 }
+      );
     }
 
-    const buffer = await imageResponse.arrayBuffer();
+    const arrayBuffer = await imageRes.arrayBuffer();
 
-    return new NextResponse(buffer, {
+    return new NextResponse(arrayBuffer, {
+      status: 200,
       headers: {
-        "Content-Type": "image/png",
+        "Content-Type": imageRes.headers.get("content-type") || "image/png",
         "Cache-Control": "no-store",
       },
     });
-  } catch (err) {
+  } catch (err: any) {
+    // Kalau ZeroGPU masih kena limit meski sudah pakai token, pesan errornya
+    // biasanya kebawa sampai sini — diteruskan ke frontend biar user tau.
     console.error("remove-bg API error:", err);
-
     return NextResponse.json(
-      {
-        error:
-          err instanceof Error
-            ? err.message
-            : "Terjadi kesalahan",
-      },
+      { error: err?.message || "Terjadi kesalahan saat memproses gambar." },
       { status: 500 }
     );
   }
