@@ -1,13 +1,12 @@
 "use client";
 import { useState, useRef, useCallback, useEffect } from "react";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:7860";
 // Kumpulan GIF desktop — taruh file-filenya di /public lalu tambah/ganti
 // path di bawah ini. Salah satunya dipilih acak tiap kali halaman dibuka
 // atau di-reload.
 const GIF_OPTIONS = ["/1.gif", "/2.gif", "/3.gif", "/4.gif", "/5.gif","/6.gif","/7.gif","/8.gif","/9.gif","/10.gif", "/11.gif",];
 
-type Phase = "idle" | "uploading" | "processing" | "done";
+type Phase = "idle" | "uploading" | "queued" | "processing" | "done";
 type Note = { id: number; message: string; icon: "warn" | "ok" };
 type Theme = "light" | "dark";
 
@@ -28,6 +27,8 @@ export default function Win95Home() {
   const [notepadSelected, setNotepadSelected] = useState(false);
   const [windowOpen, setWindowOpen] = useState(false);
   const [appSelected, setAppSelected] = useState(false);
+  const [upscalerOpen, setUpscalerOpen] = useState(false);
+  const [upscalerSelected, setUpscalerSelected] = useState(false);
   const [gifMissing, setGifMissing] = useState(false);
   const [gifIndex, setGifIndex] = useState(0);
   const [customGifUrl, setCustomGifUrl] = useState<string | null>(null);
@@ -46,10 +47,9 @@ export default function Win95Home() {
   const [sliderPos, setSliderPos] = useState(50);
   const [notes, setNotes] = useState<Note[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
   const compareRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
-
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
   useEffect(() => {
     const saved = (typeof window !== "undefined" && localStorage.getItem("nonebg-theme")) as Theme | null;
     if (saved === "light" || saved === "dark") setTheme(saved);
@@ -84,7 +84,7 @@ export default function Win95Home() {
     return () => URL.revokeObjectURL(url);
   }, [image]);
 
-  const loading = phase === "uploading" || phase === "processing";
+  const loading = phase === "uploading" || phase === "queued" || phase === "processing";
 
   const acceptFile = (file: File | undefined) => {
     if (!file) return;
@@ -104,18 +104,58 @@ export default function Win95Home() {
     acceptFile(e.dataTransfer.files?.[0]);
   };
 
-  const handleUpload = () => {
+  // Vercel Serverless Function punya batas ukuran request ~4.5MB (nggak
+  // bisa dinaikkan). Kalau file lebih besar dari itu, kecilin dulu di
+  // browser (resize + re-encode ke JPEG) sebelum dikirim ke /api/remove-bg.
+  const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+  const prepareImage = async (file: File): Promise<File> => {
+    if (file.size <= MAX_UPLOAD_BYTES) return file;
+
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxDim = 2000;
+      const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return file;
+      ctx.drawImage(bitmap, 0, 0, width, height);
+
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.88)
+      );
+      if (!blob) return file;
+
+      return new File(
+        [blob],
+        file.name.replace(/\.[^.]+$/, "") + ".jpg",
+        { type: "image/jpeg" }
+      );
+    } catch (err) {
+      console.error("Gagal kompres gambar:", err);
+      return file;
+    }
+  };
+
+  const handleUpload = async () => {
     if (!image) return;
+
     setPhase("uploading");
     setUploadPct(0);
     setResult(null);
 
+    const preparedImage = await prepareImage(image);
+
     const formData = new FormData();
-    formData.append("file", image);
+    formData.append("file", preparedImage);
 
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
-    xhr.open("POST", `${BACKEND_URL}/remove-bg`);
+    xhr.open("POST", "/api/remove-bg");
     xhr.responseType = "blob";
 
     xhr.upload.onprogress = (e) => {
@@ -125,23 +165,37 @@ export default function Win95Home() {
         if (pct >= 100) setPhase("processing");
       }
     };
-    xhr.onload = () => {
+
+    xhr.onload = async () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         setResult(URL.createObjectURL(xhr.response as Blob));
         setPhase("done");
         pushNote("Background berhasil dihapus.", "ok");
       } else {
+        let message = "Operasi gagal. Tidak dapat memproses gambar.";
+        if (xhr.status === 413) {
+          message = "Gambar masih terlalu besar buat server. Coba pakai foto lain.";
+        } else {
+          try {
+            const text = await (xhr.response as Blob).text();
+            const parsed = JSON.parse(text);
+            if (parsed?.error) message = parsed.error;
+          } catch {
+            // respons bukan JSON, pakai pesan default
+          }
+        }
         setPhase("idle");
-        pushNote("Operasi gagal. Coba jalankan ulang.");
+        pushNote(message);
       }
     };
+
     xhr.onerror = () => {
       setPhase("idle");
       pushNote("Tidak dapat terhubung ke server.");
     };
+
     xhr.send(formData);
   };
-
   const handleCancel = () => {
     xhrRef.current?.abort();
     setPhase("idle");
@@ -149,13 +203,16 @@ export default function Win95Home() {
   };
 
   const handleClear = () => {
-    xhrRef.current?.abort();
-    setImage(null);
-    setResult(null);
-    setPhase("idle");
-    setUploadPct(0);
-    if (fileInput.current) fileInput.current.value = "";
-  };
+  xhrRef.current?.abort();
+  setImage(null);
+  setResult(null);
+  setPhase("idle");
+  setUploadPct(0);
+
+  if (fileInput.current) {
+    fileInput.current.value = "";
+  }
+};
 
   const handleDownload = () => {
     if (!result) return;
@@ -193,9 +250,11 @@ export default function Win95Home() {
         if (igSelected) setIgSelected(false);
         if (notepadSelected) setNotepadSelected(false);
         if (appSelected) setAppSelected(false);
+        if (upscalerSelected) setUpscalerSelected(false);
       }}
     >
       {/* DESKTOP ICONS */}
+      <div className="desktop-icons">
       <button
         className={`desktop-icon ${igSelected ? "selected" : ""}`}
         onClick={(e) => {
@@ -255,6 +314,27 @@ export default function Win95Home() {
         </svg>
         <span className="desktop-icon-label">nonebg.exe</span>
       </button>
+
+      <button
+        className={`desktop-icon desktop-icon-4 ${upscalerSelected ? "selected" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setUpscalerSelected(true);
+          setUpscalerOpen(true);
+        }}
+        title="Buka Upscaler.exe"
+      >
+        <svg viewBox="0 0 32 32" className="desktop-icon-art" shapeRendering="crispEdges">
+          <rect x="4" y="4" width="24" height="24" fill="#ffffff" stroke="#000000" strokeWidth="1.5" />
+          <rect x="4" y="4" width="24" height="6" fill="#000080" />
+          <rect x="6" y="6" width="3" height="2" fill="#ffffff" />
+          <rect x="9" y="12" width="8" height="8" fill="none" stroke="#000000" strokeWidth="1.5" />
+          <rect x="15" y="18" width="8" height="8" fill="none" stroke="#000000" strokeWidth="1.5" />
+          <path d="M18 14 L24 8 M24 8 L19 8 M24 8 L24 13" stroke="#000000" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="desktop-icon-label">Upscaler.exe</span>
+      </button>
+      </div>
 
       {/* WINDOW */}
       {windowOpen && (
@@ -377,17 +457,20 @@ export default function Win95Home() {
               </fieldset>
             </div>
 
-            <div className="statusbar">
-              <div className="status-panel status-main">
-                {phase === "uploading" && "Mengunggah…"}
-                {phase === "processing" && "Memproses…"}
-                {phase === "idle" && !image && "Siap."}
-                {phase === "idle" && image && "Gambar dipilih."}
-                {phase === "done" && "Selesai."}
-              </div>
-              <div className="status-panel">rembg engine</div>
-              <div className="status-panel">{theme === "light" ? "Mode terang" : "Mode gelap"}</div>
-            </div>
+<div className="statusbar">
+  <div className="status-panel status-main">
+    {phase === "uploading" && "Mengunggah…"}
+    {phase === "queued" && "Menunggu ZeroGPU…"}
+    {phase === "processing" && "Memproses…"}
+    {phase === "idle" && !image && "Siap."}
+    {phase === "idle" && image && "Gambar dipilih."}
+    {phase === "done" && "Selesai."}
+  </div>
+  <div className="status-panel">rembg engine</div>
+  <div className="status-panel">
+    {theme === "light" ? "Mode terang" : "Mode gelap"}
+  </div>
+</div>
           </>
         )}
       </div>
@@ -458,6 +541,46 @@ Tips:
         </div>
       )}
 
+      {/* UPSCALER — masih coming soon */}
+      {upscalerOpen && (
+        <div className="notepad-window">
+          <div className="window notepad">
+            <div className="titlebar">
+              <div className="titlebar-left">
+                <span className="titlebar-icon">🔍</span>
+                <span>Upscaler.exe</span>
+              </div>
+              <div className="titlebar-controls">
+                <button className="win-btn" title="Tutup" onClick={() => setUpscalerOpen(false)}>
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="menubar">
+              <span onClick={() => setUpscalerOpen(false)}>
+                <u>F</u>ile
+              </span>
+              <span onClick={() => pushNote("Belum ada yang bisa diatur di sini.", "warn")}>
+                <u>V</u>iew
+              </span>
+              <span onClick={() => pushNote("Fitur upscaler lagi disiapin, tunggu update ya!", "ok")}>
+                <u>H</u>elp
+              </span>
+            </div>
+            <div className="comingsoon-body">
+              <div className="comingsoon-icon">🚧</div>
+              <div className="comingsoon-title">Coming Soon</div>
+              <div className="comingsoon-text">
+                Fitur upscale gambar lagi disiapin. Balik lagi nanti ya!
+              </div>
+            </div>
+            <div className="statusbar">
+              <div className="status-panel status-main">Belum tersedia</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* GIF FRAME — pilihan acak dari GIF_OPTIONS, atau ganti langsung lewat tombol */}
       <div className="gif-frame-wrap">
         <button className="gif-swap-btn" onClick={() => gifInput.current?.click()}>
@@ -496,7 +619,13 @@ Tips:
             <div className="titlebar">
               <div className="titlebar-left">
                 <span className="titlebar-icon">⏳</span>
-                <span>{phase === "uploading" ? "Mengunggah" : "Memproses"}</span>
+                <span>
+                  {phase === "uploading"
+                    ? "Mengunggah"
+                    : phase === "queued"
+                      ? "Menunggu GPU"
+                      : "Memproses"}
+                </span>
               </div>
             </div>
             <div className="window-body dialog-body">
@@ -539,7 +668,7 @@ Tips:
       {/* TASKBAR */}
       <div className="taskbar">
         <button className="start-btn" onClick={(e) => { e.stopPropagation(); setStartOpen((s) => !s); }}>
-          <span className="start-icon">▦</span> Start
+          <span className="start-icon">▦</span> <span className="start-label">Start</span>
         </button>
         {startOpen && (
           <div className="start-menu" onClick={(e) => e.stopPropagation()}>
@@ -587,6 +716,9 @@ Tips:
       </div>
 
       <style jsx>{`
+        .desktop-icons {
+          position: static;
+        }
         .desktop {
           position: relative;
           min-height: 100vh;
@@ -646,6 +778,30 @@ Tips:
         }
         .desktop-icon-3 {
           top: 224px;
+        }
+        .desktop-icon-4 {
+          top: 326px;
+        }
+
+        .comingsoon-body {
+          padding: 30px 16px;
+          text-align: center;
+        }
+        .comingsoon-icon {
+          font-size: 32px;
+          margin-bottom: 8px;
+        }
+        .comingsoon-title {
+          font-weight: bold;
+          font-size: 15px;
+          margin-bottom: 6px;
+        }
+        .comingsoon-text {
+          font-size: 11px;
+          opacity: 0.75;
+          max-width: 280px;
+          margin: 0 auto;
+          line-height: 1.5;
         }
 
         .notepad-window {
@@ -1308,6 +1464,126 @@ Tips:
         .theme-dark .start-sep {
           border-top-color: #1c1a22;
           border-bottom-color: #55506a;
+        }
+
+        /* ===== MOBILE ===== */
+        @media (max-width: 640px) {
+          .desktop {
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 10px 76px;
+          }
+
+          /* Icon jadi baris horizontal di atas window, bukan kolom
+             absolute di kiri — di layar sempit window full-width bakal
+             nutupin icon kalau posisinya tetap absolute. */
+          .desktop-icons {
+            position: static;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
+            width: 100%;
+            max-width: 420px;
+            margin-bottom: 10px;
+          }
+          .desktop-icon,
+          .desktop-icon-2,
+          .desktop-icon-3,
+          .desktop-icon-4 {
+            position: static;
+            top: auto;
+            left: auto;
+            width: 64px;
+          }
+          .desktop-icon-art {
+            width: 28px;
+            height: 28px;
+          }
+
+          .window {
+            margin-top: 0;
+            max-width: 100%;
+          }
+
+          .win-btn,
+          .theme-btn {
+            width: 24px;
+            height: 22px;
+          }
+
+          .win-button {
+            padding: 8px 14px;
+            font-size: 13px;
+          }
+          .btn-row {
+            flex-direction: column;
+          }
+          .btn-row .win-button {
+            width: 100%;
+          }
+
+          .menubar {
+            gap: 10px;
+            padding: 5px 8px;
+            font-size: 13px;
+          }
+
+          .statusbar .status-panel:not(.status-main) {
+            display: none;
+          }
+
+          .notepad-window {
+            top: 16px;
+            width: calc(100% - 20px);
+          }
+          .notepad-text {
+            max-height: 44vh;
+          }
+
+          .dropzone {
+            height: 170px;
+          }
+
+          .notes {
+            left: 50%;
+            right: auto;
+            bottom: 44px;
+            transform: translateX(-50%);
+            width: calc(100% - 24px);
+            max-width: 320px;
+          }
+
+          .gif-frame-wrap {
+            right: 8px;
+            bottom: 44px;
+            width: 84px;
+          }
+          .gif-frame {
+            width: 84px;
+            height: 84px;
+          }
+          .gif-swap-btn {
+            font-size: 10px;
+            padding: 4px 0;
+          }
+          .gif-credit {
+            font-size: 9px;
+          }
+
+          .taskbar {
+            padding: 3px 4px;
+            gap: 4px;
+          }
+          .start-label {
+            display: none;
+          }
+          .task-item {
+            max-width: 30vw;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
         }
       `}</style>
     </div>
