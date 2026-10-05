@@ -6,6 +6,11 @@ import { useState, useRef, useCallback, useEffect } from "react";
 // atau di-reload.
 const GIF_OPTIONS = ["/1.gif", "/2.gif", "/3.gif", "/4.gif", "/5.gif","/6.gif","/7.gif","/8.gif","/9.gif","/10.gif", "/11.gif",];
 
+// Gambar contoh buat window Demo — taruh foto sebelum/sesudah hapus
+// background di folder /public, lalu ganti nama file-nya di sini kalau
+// mau pakai nama lain.
+const DEMO_IMAGE = "/demo.png";
+
 type Phase = "idle" | "uploading" | "queued" | "processing" | "done";
 type Note = { id: number; message: string; icon: "warn" | "ok" };
 type Theme = "light" | "dark";
@@ -29,6 +34,8 @@ export default function Win95Home() {
   const [appSelected, setAppSelected] = useState(false);
   const [upscalerOpen, setUpscalerOpen] = useState(false);
   const [upscalerSelected, setUpscalerSelected] = useState(false);
+  const [demoOpen, setDemoOpen] = useState(false);
+  const [demoSelected, setDemoSelected] = useState(false);
   const [gifMissing, setGifMissing] = useState(false);
   const [gifIndex, setGifIndex] = useState(0);
   const [customGifUrl, setCustomGifUrl] = useState<string | null>(null);
@@ -251,6 +258,7 @@ export default function Win95Home() {
         if (notepadSelected) setNotepadSelected(false);
         if (appSelected) setAppSelected(false);
         if (upscalerSelected) setUpscalerSelected(false);
+        if (demoSelected) setDemoSelected(false);
       }}
     >
       {/* DESKTOP ICONS */}
@@ -333,6 +341,27 @@ export default function Win95Home() {
           <path d="M18 14 L24 8 M24 8 L19 8 M24 8 L24 13" stroke="#000000" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         <span className="desktop-icon-label">Upscaler.exe</span>
+      </button>
+
+      <button
+        className={`desktop-icon desktop-icon-5 ${demoSelected ? "selected" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setDemoSelected(true);
+          setDemoOpen(true);
+        }}
+        title="Lihat contoh hasil"
+      >
+        <svg viewBox="0 0 32 32" className="desktop-icon-art" shapeRendering="crispEdges">
+          <rect x="4" y="4" width="24" height="24" fill="#ffffff" stroke="#000000" strokeWidth="1.5" />
+          <rect x="4" y="4" width="24" height="6" fill="#000080" />
+          <rect x="6" y="6" width="3" height="2" fill="#ffffff" />
+          <rect x="8" y="12" width="7" height="14" fill="#c0c0c0" stroke="#000000" strokeWidth="1" />
+          <rect x="17" y="12" width="7" height="14" fill="none" stroke="#000000" strokeWidth="1" />
+          <rect x="18" y="14" width="2" height="2" fill="#000000" />
+          <rect x="21" y="18" width="2" height="2" fill="#000000" />
+        </svg>
+        <span className="desktop-icon-label">Demo.exe</span>
       </button>
       </div>
 
@@ -581,6 +610,65 @@ Tips:
         </div>
       )}
 
+      {/* DEMO — contoh hasil hapus background, bukan upload asli */}
+      {demoOpen && (
+        <div className="notepad-window">
+          <div className="window notepad">
+            <div className="titlebar">
+              <div className="titlebar-left">
+                <span className="titlebar-icon">🖼</span>
+                <span>Demo.exe - Contoh Hasil</span>
+              </div>
+              <div className="titlebar-controls">
+                <button className="win-btn" title="Tutup" onClick={() => setDemoOpen(false)}>
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="menubar">
+              <span onClick={() => setDemoOpen(false)}>
+                <u>F</u>ile
+              </span>
+              <span
+                onClick={() => {
+                  setDemoOpen(false);
+                  setWindowOpen(true);
+                  setMinimized(false);
+                }}
+              >
+                <u>C</u>oba sendiri
+              </span>
+            </div>
+            <div className="window-body">
+              <fieldset className="groupbox">
+                <legend>Contoh Gambar</legend>
+                <div className="demo-frame">
+                  <img src={DEMO_IMAGE} alt="Contoh gambar" className="demo-img" />
+                </div>
+                <div className="demo-caption">
+                  Klik kanan gambar di atas untuk menyalin atau menyimpan — bisa dipakai sebagai contoh.
+                </div>
+                <div className="btn-row">
+                  <button
+                    className="win-button"
+                    onClick={() => {
+                      setDemoOpen(false);
+                      setWindowOpen(true);
+                      setMinimized(false);
+                    }}
+                  >
+                    Coba sekarang
+                  </button>
+                </div>
+              </fieldset>
+            </div>
+            <div className="statusbar">
+              <div className="status-panel status-main">Contoh — bukan hasil upload kamu</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* GIF FRAME — pilihan acak dari GIF_OPTIONS, atau ganti langsung lewat tombol */}
       <div className="gif-frame-wrap">
         <button className="gif-swap-btn" onClick={() => gifInput.current?.click()}>
@@ -781,6 +869,38 @@ Tips:
         }
         .desktop-icon-4 {
           top: 326px;
+        }
+        .desktop-icon-5 {
+          top: 428px;
+        }
+
+        .demo-frame {
+          position: relative;
+          width: 100%;
+          height: 220px;
+          border: 1px inset #808080;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .theme-light .demo-frame {
+          background: #fff;
+        }
+        .theme-dark .demo-frame {
+          background: #211f28;
+          border-color: #1c1a22 #55506a #55506a #1c1a22;
+        }
+        .demo-img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+        }
+        .demo-caption {
+          margin-top: 8px;
+          font-size: 11px;
+          opacity: 0.75;
+          line-height: 1.5;
         }
 
         .comingsoon-body {
@@ -1490,7 +1610,8 @@ Tips:
           .desktop-icon,
           .desktop-icon-2,
           .desktop-icon-3,
-          .desktop-icon-4 {
+          .desktop-icon-4,
+          .desktop-icon-5 {
             position: static;
             top: auto;
             left: auto;
