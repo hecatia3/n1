@@ -9,7 +9,7 @@ const GIF_OPTIONS = ["/1.gif", "/2.gif", "/3.gif", "/4.gif", "/5.gif","/6.gif","
 // Gambar contoh buat window Demo — taruh foto sebelum/sesudah hapus
 // background di folder /public, lalu ganti nama file-nya di sini kalau
 // mau pakai nama lain.
-const DEMO_IMAGE = "/demo.png";
+const DEMO_IMAGE = "/N.jpg";
 
 type Phase = "idle" | "uploading" | "queued" | "processing" | "done";
 type Note = { id: number; message: string; icon: "warn" | "ok" };
